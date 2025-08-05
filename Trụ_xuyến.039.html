@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xây dựng Hình xuyến từ Phép dán</title>
+    <style>
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; background-color: #1a1a1a; color: #e0e0e0; overflow: hidden; }
+        #container { display: flex; width: 100vw; height: 100vh; }
+        
+        /* Bảng điều khiển chiếm 40% bên trái */
+        #info-panel { 
+            flex: 0 0 40%; /* không co, không giãn, chiếm 40% */
+            padding: 25px; 
+            background-color: #2c2c2c; 
+            box-shadow: 2px 0 10px rgba(0,0,0,0.5); 
+            overflow-y: auto; 
+            display: flex; 
+            flex-direction: column; 
+            z-index: 10; 
+        }
+        
+        /* *** THAY ĐỔI CHÍNH Ở ĐÂY *** */
+        /* Canvas sẽ tự động chiếm phần không gian còn lại */
+        #canvas-container { 
+            flex-grow: 1; 
+            position: relative; /* position: relative vẫn tốt để định vị các phần tử con sau này nếu cần */
+        }
+        
+        h1 { color: #4fc3f7; margin-top: 0; font-size: 1.8em; text-align: center; }
+        p { line-height: 1.6; font-size: 1.1em; }
+        .control-group { margin-top: 30px; }
+        label { font-weight: bold; font-size: 1.2em; }
+        .slider-container { display: flex; align-items: center; gap: 15px; margin-top: 10px; }
+        .slider-container input[type="range"] { flex-grow: 1; cursor: pointer; }
+        #equations { background-color: #333; padding: 15px; border-radius: 8px; margin-top: auto; font-size: 1.0em; }
+        .equation-title { margin-bottom: 0.2em; margin-top: 1.0em; font-weight: bold; }
+        canvas { display: block; } /* Đảm bảo canvas không có margin thừa */
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="info-panel">
+            <h1>Xây dựng Hình xuyến từ Phép dán</h1>
+            <p>
+                Minh họa hai bước "dán" tôpô để biến một hình vuông <strong>[0,1]²</strong> thành một hình xuyến (bánh donut).
+            </p>
+            
+            <div class="control-group">
+                <label for="cylinder-slider">Bước 1: Dán thành Hình trụ = <span id="cylinder-value">0</span>%</label>
+                <div class="slider-container">
+                    <input type="range" id="cylinder-slider" min="0" max="1" value="0" step="0.001">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label for="torus-slider">Bước 2: Dán thành Hình xuyến = <span id="torus-value">0</span>%</label>
+                <div class="slider-container">
+                    <input type="range" id="torus-slider" min="0" max="1" value="0" step="0.001">
+                </div>
+            </div>
+
+            <div id="equations"></div>
+        </div>
+        <div id="canvas-container"></div>
+    </div>
+    
+    <script> MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] }, svg: { fontCache: 'global' } }; </script>
+    <script type="text/javascript" id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+    <script type="importmap"> { "imports": { "three": "https://unpkg.com/three@0.164.1/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.164.1/examples/jsm/" } } </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        let scene, camera, renderer, controls, pointsObject;
+        const NUM_POINTS = 100000;
+        let initialPoints = []; 
+
+        const cylinderSlider = document.getElementById('cylinder-slider');
+        const cylinderValueSpan = document.getElementById('cylinder-value');
+        const torusSlider = document.getElementById('torus-slider');
+        const torusValueSpan = document.getElementById('torus-value');
+        const equationsDiv = document.getElementById('equations');
+        const canvasContainer = document.getElementById('canvas-container');
+
+        function updateMathJax() { /* ... Giữ nguyên ... */ }
+        function generateInitialPoints() { /* ... Giữ nguyên ... */ }
+        function createLabeledAxes(size) { /* ... Giữ nguyên ... */ }
+        function updateGeometry(cylinderFactor, torusFactor) { /* ... Giữ nguyên ... */ }
+        function update() { /* ... Giữ nguyên ... */ }
+
+        function init() {
+            scene = new THREE.Scene();
+            // *** THAY ĐỔI TÍNH TOÁN TỶ LỆ KHUNG HÌNH ***
+            // Sử dụng clientWidth và clientHeight của canvasContainer, không phải window
+            camera = new THREE.PerspectiveCamera(75, canvasContainer.clientWidth / canvasContainer.clientHeight, 0.1, 100);
+            camera.position.set(1.2, 1.2, 1.8);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            // Kích thước renderer cũng phải khớp với container của nó
+            renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+            canvasContainer.appendChild(renderer.domElement);
+            
+            // OrbitControls vẫn dùng domElement của renderer nên không cần đổi
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            
+            scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+            scene.add(createLabeledAxes(1.5));
+
+            generateInitialPoints();
+            const geometry = new THREE.BufferGeometry();
+            const material = new THREE.PointsMaterial({ color: 0x76ff03, size: 0.005 });
+            pointsObject = new THREE.Points(geometry, material);
+            scene.add(pointsObject);
+
+            updateMathJax();
+            update(); 
+            
+            cylinderSlider.addEventListener('input', update);
+            torusSlider.addEventListener('input', update);
+            
+            // Listener resize cũng phải dùng kích thước của container
+            window.addEventListener('resize', () => {
+                camera.aspect = canvasContainer.clientWidth / canvasContainer.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+            });
+            
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+        }
+
+        // --- ĐIỀN ĐẦY CÁC HÀM GIỮ NGUYÊN ---
+        updateMathJax = function() {
+            equationsDiv.innerHTML = `
+                <p class="equation-title">Điểm gốc (u,v) trong [0,1]²:</p>
+                $$ P_{flat} = (u - 0.5, v - 0.5, 0) $$
+                <p class="equation-title">Quy tắc dán 1: (u,0) ~ (u,1) tạo Hình trụ:</p>
+                $$ P_{cyl} = (r \\cos(2\\pi u), v - 0.5, r \\sin(2\\pi u)) $$
+                <p class="equation-title">Quy tắc dán 2: (0,v) ~ (1,v) tạo Hình xuyến:</p>
+                $$ P_{torus} = 
+                \\begin{pmatrix} (R+r\\cos(2\\pi v))\\cos(2\\pi u) \\\\ r\\sin(2\\pi v) \\\\ -(R+r\\cos(2\\pi v))\\sin(2\\pi u) \\end{pmatrix}
+                $$
+            `; // Sửa lại công thức hình xuyến một chút cho đúng chuẩn
+             if (window.MathJax && window.MathJax.typesetPromise) {
+                MathJax.typesetPromise([equationsDiv]).catch((err) => console.log('MathJax error:', err));
+            }
+        };
+        generateInitialPoints = function() {
+            for (let i = 0; i < NUM_POINTS; i++) {
+                initialPoints.push({ u: Math.random(), v: Math.random() });
+            }
+        };
+        createLabeledAxes = function(size) {
+            const group = new THREE.Group();
+            const axesHelper = new THREE.AxesHelper(size);
+            group.add(axesHelper);
+            const coneRadius = size * 0.03; const coneHeight = size * 0.1;
+            const coneGeometry = new THREE.ConeGeometry(coneRadius, coneHeight, 16);
+            
+            const createLabel = (text, color, position) => {
+                const canvas = document.createElement('canvas'); const context = canvas.getContext('2d');
+                const canvasSize = 64; canvas.width = canvasSize; canvas.height = canvasSize;
+                context.font = `Bold ${canvasSize / 2}px Arial`; context.fillStyle = color;
+                context.textAlign = 'center'; context.textBaseline = 'middle';
+                context.fillText(text, canvasSize / 2, canvasSize / 2);
+                const texture = new THREE.CanvasTexture(canvas);
+                const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true });
+                const sprite = new THREE.Sprite(spriteMaterial);
+                sprite.scale.set(0.4, 0.4, 1.0); sprite.position.copy(position); return sprite;
+            };
+
+            const arrowX = new THREE.Mesh(coneGeometry, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+            arrowX.position.set(size, 0, 0); arrowX.rotation.z = -Math.PI / 2;
+            group.add(arrowX, createLabel('X', '#ff7777', new THREE.Vector3(size + coneHeight, 0.1, 0)));
+
+            const arrowY = new THREE.Mesh(coneGeometry, new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+            arrowY.position.set(0, size, 0);
+            group.add(arrowY, createLabel('Y', '#77ff77', new THREE.Vector3(0.1, size + coneHeight, 0)));
+
+            const arrowZ = new THREE.Mesh(coneGeometry, new THREE.MeshBasicMaterial({ color: 0x0000ff }));
+            arrowZ.position.set(0, 0, size); arrowZ.rotation.x = Math.PI / 2;
+            group.add(arrowZ, createLabel('Z', '#7777ff', new THREE.Vector3(0, 0.1, size + coneHeight)));
+            
+            group.add(createLabel('O', '#ffffff', new THREE.Vector3(0.1, -0.1, 0)));
+            return group;
+        };
+        updateGeometry = function(cylinderFactor, torusFactor) {
+            const positions = new Float32Array(NUM_POINTS * 3);
+            const minorRadius = 0.2; 
+            const majorRadius = 0.8; 
+
+            const p_flat = new THREE.Vector3();
+            const p_cyl = new THREE.Vector3();
+            const p_torus = new THREE.Vector3();
+            const p_final = new THREE.Vector3();
+
+            for (let i = 0; i < NUM_POINTS; i++) {
+                const p = initialPoints[i];
+                const theta = p.u * 2 * Math.PI; // Góc lớn (vòng quanh ống)
+                const phi = p.v * 2 * Math.PI;   // Góc nhỏ (vòng quanh tâm chính)
+                
+                // Trạng thái phẳng
+                p_flat.set(p.u - 0.5, p.v - 0.5, 0);
+                
+                // Trạng thái trụ
+                p_cyl.set((minorRadius) * Math.cos(theta), p.v - 0.5, (minorRadius) * Math.sin(theta));
+
+                // Trạng thái xuyến (công thức chuẩn)
+                p_torus.set(
+                    (majorRadius + minorRadius * Math.cos(theta)) * Math.cos(phi),
+                    (majorRadius + minorRadius * Math.cos(theta)) * Math.sin(phi),
+                    minorRadius * Math.sin(theta)
+                );
+                
+                p_final.copy(p_flat).lerp(p_cyl, cylinderFactor); 
+                p_final.lerp(p_torus, torusFactor);             
+
+                positions[i * 3]     = p_final.x;
+                positions[i * 3 + 1] = p_final.y;
+                positions[i * 3 + 2] = p_final.z;
+            }
+            
+            pointsObject.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        };
+        update = function() {
+            const cylinderFactor = parseFloat(cylinderSlider.value);
+            const torusFactor = parseFloat(torusSlider.value);
+            cylinderValueSpan.textContent = Math.round(cylinderFactor * 100);
+            torusValueSpan.textContent = Math.round(torusFactor * 100);
+            updateGeometry(cylinderFactor, torusFactor);
+        };
+
+        init();
+    </script>
+</body>
+</html>
